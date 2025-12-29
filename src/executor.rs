@@ -82,7 +82,7 @@ mod tests {
             then.status(200).body(r#"{"result":"ok"}"#);
         });
 
-        std::env::set_var("FLASHBOTS_RELAY_URL", server.url("/"));
+        unsafe { std::env::set_var("FLASHBOTS_RELAY_URL", server.url("/")); }
         let rc = RelayClient::new().await.unwrap();
         let signed = vec![vec![0x01,0x02,0x03]];
         let v = rc.submit_flashbots_bundle(&signed, Some(12345)).await.unwrap();
