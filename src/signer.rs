@@ -103,10 +103,65 @@ impl<R: RemoteSigner + 'static> Signer for RemoteBasedSigner<R> {
     async fn sign_typed_transaction(&self, tx: &TypedTransaction) -> Result<Vec<u8>> {
         // Compute sighash and ask remote to sign it
         let sighash = tx.sighash();
-        let sig = self.client.sign_digest(sighash.as_bytes()).await.context("remote sign failed")?;
-        // NOTE: we assume remote returns a recoverable signature compatible with ethers' Signature
-        // For tests with MockRemoteSigner we will return a valid RLP using local codepath instead.
-        Err(anyhow::anyhow!("rlp signing via remote is not implemented in generic RemoteBasedSigner"))
+        let sig_bytes = self.client.sign_digest(sighash.as_bytes()).await.context("remote sign failed")?;
+
+        // Attempt to parse as DER signature first (common for KMS). If that fails,
+        // accept compact (r||s||v) or r||s with v appended.
+        use crate::crypto::der::der_to_ethers_signature;
+        let maybe_sig = der_to_ethers_signature(&sig_bytes, sighash.as_bytes(), None);
+        let ethers_sig = match maybe_sig {
+            Ok(s) => s,
+            Err(_) => {
+                // Try compact form: 65 bytes (r||s||v)
+                if sig_bytes.len() == 65 {
+                    let r = ethers_core::types::U256::from_big_endian(&sig_bytes[0..32]);
+                    let s = ethers_core::types::U256::from_big_endian(&sig_bytes[32..64]);
+                    let v = sig_bytes[64] as u64;
+                    ethers_core::types::Signature { r, s, v }
+                } else if sig_bytes.len() == 64 {
+                    // no v provided; attempt recovery by trying recid 0..3 using k256
+                    use k256::ecdsa::Signature as KSignature;
+                    use secp256k1::{Secp256k1, ecdsa::{RecoverableSignature, RecoveryId}};
+                    let compact = &sig_bytes[..];
+                    // k256 requires GenericArray; use secp to recover
+                    let secp = Secp256k1::new();
+                    let msg = secp256k1::Message::from_slice(sighash.as_bytes()).map_err(|e| anyhow::anyhow!(e))?;
+                    let mut found: Option<ethers_core::types::Signature> = None;
+                    for recid_val in 0..4 {
+                        let recid = RecoveryId::from_i32(recid_val).map_err(|e| anyhow::anyhow!(e))?;
+                        if let Ok(rec_sig) = RecoverableSignature::from_compact(compact, recid) {
+                            if let Ok(pk) = secp.recover_ecdsa(&msg, &rec_sig) {
+                                let serialized = pk.serialize_uncompressed();
+                                let pubkey_bytes = &serialized[1..65];
+                                let _addr_bytes = ethers_core::utils::keccak256(pubkey_bytes);
+                                // accept first recovered sig
+                                let r = ethers_core::types::U256::from_big_endian(&compact[0..32]);
+                                let s = ethers_core::types::U256::from_big_endian(&compact[32..64]);
+                                let v = (recid_val as u64) + 27u64;
+                                found = Some(ethers_core::types::Signature { r, s, v });
+                                break;
+                            }
+                        }
+                    }
+                    found.ok_or_else(|| anyhow::anyhow!("could not recover signature"))?
+                } else {
+                    return Err(anyhow::anyhow!("unsupported signature format from remote"));
+                }
+            }
+        };
+
+        // Normalize `v` for typed transactions (EIP-1559 expects parity 0/1)
+        let normalized_sig = match tx {
+            TypedTransaction::Eip1559(_) => {
+                let v_parity = if ethers_sig.v >= 27 { ethers_sig.v - 27 } else { ethers_sig.v };
+                ethers_core::types::Signature { r: ethers_sig.r, s: ethers_sig.s, v: v_parity }
+            }
+            _ => ethers_sig,
+        };
+
+        // RLP sign the transaction using ethers helper
+        let raw = tx.rlp_signed(&normalized_sig);
+        Ok(raw.to_vec())
     }
 }
 
@@ -139,19 +194,22 @@ mod tests {
     }
 
     struct MockRemote {
-        // For the mock, we'll sign using a local wallet under the hood
+        // For the mock, we'll sign using secp256k1 to return DER-encoded signatures (like KMS)
         secret: String,
     }
 
     #[async_trait]
     impl RemoteSigner for MockRemote {
         async fn sign_digest(&self, digest: &[u8]) -> Result<Vec<u8>> {
-            use ethers_signers::LocalWallet;
-            use std::str::FromStr;
-            let wallet = LocalWallet::from_str(&self.secret).context("invalid private key")?;
-            // sign_hash is synchronous for LocalWallet (returns Signature)
-            let sig = wallet.sign_hash(ethers_core::types::H256::from_slice(digest));
-            Ok(sig.to_vec())
+            use secp256k1::{Secp256k1, SecretKey, Message as SecpMessage};
+            // secret is raw hex of private key
+            let sk_bytes = hex::decode(&self.secret).map_err(|e| anyhow::anyhow!(e))?;
+            let sk = SecretKey::from_slice(&sk_bytes).map_err(|e| anyhow::anyhow!(e))?;
+            let secp = Secp256k1::new();
+            let msg = SecpMessage::from_slice(digest).map_err(|e| anyhow::anyhow!(e))?;
+            let recsig = secp.sign_ecdsa_recoverable(&msg, &sk);
+            let std = recsig.to_standard();
+            Ok(std.serialize_der().to_vec())
         }
     }
 
@@ -160,7 +218,19 @@ mod tests {
         let secret = "0123456789012345678901234567890123456789012345678901234567890123".to_string();
         let mock = std::sync::Arc::new(MockRemote { secret });
         let s = RemoteBasedSigner::new(mock);
-        let b = s.sign_transaction(b"hello").await.unwrap();
-        assert!(b.len() > 0);
+
+        let tx = build_eip1559_tx(
+            U256::from(0u64),
+            Address::zero(),
+            U256::from(0u64),
+            Bytes::from(vec![]),
+            U256::from(21000u64),
+            U256::from(1_000_000_000u64),
+            U256::from(100_000_000_000u64),
+            1u64,
+        );
+
+        let raw = s.sign_typed_transaction(&tx).await.unwrap();
+        assert!(raw.len() > 0);
     }
 }

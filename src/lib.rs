@@ -6,6 +6,7 @@ pub mod signer;
 pub mod sim;
 pub mod tx;
 pub mod kms;
+pub mod crypto;
 pub mod autosubmit;
 
 use anyhow::Result;

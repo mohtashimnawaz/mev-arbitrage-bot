@@ -1,10 +1,15 @@
 use anyhow::Result;
+use ethers_core::types::Address;
 
 /// KMS client trait for signing digests (abstracts AWS KMS, YubiHSM, etc.)
 #[async_trait::async_trait]
 pub trait KmsClient: Send + Sync + 'static {
     /// Sign a 32-byte digest and return signature bytes in a compatible format
     async fn sign(&self, digest: &[u8]) -> Result<Vec<u8>>;
+
+    /// Optional: return public key or address associated with the key (useful for verifying recoverable signatures)
+    async fn get_address(&self) -> Result<Option<Address>> { Ok(None) }
+
 }
 
 /// Mock KMS client for tests

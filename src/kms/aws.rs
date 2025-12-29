@@ -57,6 +57,7 @@ mod real {
                 .send()
                 .await?;
             if let Some(sig) = resp.signature() {
+                // AWS returns DER-encoded ASN.1 signature for ECDSA
                 Ok(sig.as_ref().to_vec())
             } else {
                 Err(anyhow!("no signature returned from KMS"))
