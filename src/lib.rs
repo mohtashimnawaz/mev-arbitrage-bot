@@ -4,6 +4,7 @@ pub mod executor;
 pub mod scanner;
 pub mod signer;
 pub mod sim;
+pub mod tx;
 
 use anyhow::Result;
 use tracing::{info, warn};
