@@ -67,7 +67,7 @@ mod tests {
 
     #[tokio::test]
     async fn relay_submit_bundle_falls_back_when_no_relay() {
-        std::env::remove_var("FLASHBOTS_RELAY_URL");
+        unsafe { std::env::remove_var("FLASHBOTS_RELAY_URL"); }
         let rc = RelayClient::new().await.unwrap();
         let res = rc.submit_bundle(&[1u8,2,3]).await.unwrap();
         assert_eq!(res, "stub");
