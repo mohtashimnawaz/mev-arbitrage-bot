@@ -18,6 +18,10 @@ pub fn der_to_ethers_signature(der_sig: &[u8], msg_hash: &[u8], expected_address
     // Prepare message and use secp256k1 recoverable API to recover the verifying key for each possible id
     let msg = SecpMessage::from_slice(msg_hash).map_err(|e| anyhow::anyhow!("{}", e))?;
     let secp = Secp256k1::new();
+    // Curve order for secp256k1
+    let curve_n = ethers_core::types::U256::from_big_endian(&hex::decode("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141").unwrap());
+    let half_n = curve_n.checked_div(ethers_core::types::U256::from(2u64)).unwrap();
+
     for recid_val in 0..4 {
         let recid = RecoveryId::from_i32(recid_val).map_err(|e| anyhow::anyhow!("{}", e))?;
         let rec_sig = RecoverableSignature::from_compact(&compact, recid).map_err(|e| anyhow::anyhow!("{}", e))?;
@@ -27,9 +31,14 @@ pub fn der_to_ethers_signature(der_sig: &[u8], msg_hash: &[u8], expected_address
             let addr_bytes = ethers_core::utils::keccak256(pubkey_bytes);
             let addr = Address::from_slice(&addr_bytes[12..]);
             if expected_address.is_none() || expected_address.unwrap() == addr {
-                let r = ethers_core::types::U256::from_big_endian(&compact[0..32]);
-                let s = ethers_core::types::U256::from_big_endian(&compact[32..64]);
-                let v = (recid_val as u64) + 27u64;
+                let mut r = ethers_core::types::U256::from_big_endian(&compact[0..32]);
+                let mut s = ethers_core::types::U256::from_big_endian(&compact[32..64]);
+                let mut v = (recid_val as u64) + 27u64;
+                // Enforce low-s canonical form: if s > N/2, set s = N - s and flip v
+                if s > half_n {
+                    s = curve_n.checked_sub(s).unwrap_or_default();
+                    v = if v == 27 { 28u64 } else { 27u64 };
+                }
                 let sig = Signature { r, s, v };
                 return Ok(sig);
             }

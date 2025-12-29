@@ -13,7 +13,10 @@ AWS KMS integration (feature: `aws-kms`)
   - Set `RUN_AWS_KMS_INTEGRATION=1` to run the ignored integration test.
   - Set `AWS_KMS_KEY_ID` to your KMS key id (the key must support ECDSA/secp256k1 for Ethereum signing).
   - Configure AWS credentials via the standard environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) or via the AWS SDK's default credential chain.
-- The integration test `tests/aws_kms_integration.rs` calls `GetPublicKey` and validates that a public key is returned. Signing still requires ECDSA support and the calling code must adapt DER signatures to Ethereum's (r, s, v) format for tx signing.
+- The integration test `tests/aws_kms_integration.rs` calls `GetPublicKey` and validates that a public key is returned. A new integration test `tests/aws_kms_sign_integration.rs` (ignored by default) will attempt to use `Sign` to sign a transaction digest and will verify that the recovered address matches the KMS key's public key.
+- **Important**: Ensure your KMS key is compatible with secp256k1 (ECDSA over secp256k1). The code attempts to extract the uncompressed public key from the DER `GetPublicKey` response; if no uncompressed point is found, the test will skip/fail accordingly.
+- The code enforces low-s canonical form when converting DER signatures to `(r,s,v)` and flips `v` accordingly. Metrics counters `kms.sign.attempts`, `kms.sign.success`, and `kms.sign.failure` are emitted when the `with-metrics` feature is enabled.
+
 
 YubiHSM integration (feature: `yubihsm`)
 

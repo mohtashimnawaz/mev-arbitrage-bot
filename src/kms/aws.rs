@@ -44,10 +44,32 @@ mod real {
             }
         }
 
+        /// Attempt to extract an Ethereum address from the DER-encoded SubjectPublicKeyInfo returned
+        /// by `GetPublicKey`. This is a heuristic that looks for an uncompressed EC point (0x04 || X || Y)
+        /// inside the returned bytes and converts it to an address.
+        pub async fn get_address(&self) -> Result<Option<ethers_core::types::Address>> {
+            let pk = self.get_public_key().await?;
+            // Search for a 65-byte uncompressed point starting with 0x04
+            for i in 0..(pk.len().saturating_sub(65)) {
+                if pk[i] == 0x04 {
+                    let slice = &pk[i..i+65];
+                    let pub_bytes = &slice[1..65];
+                    let addr_bytes = ethers_core::utils::keccak256(pub_bytes);
+                    let addr = ethers_core::types::Address::from_slice(&addr_bytes[12..]);
+                    return Ok(Some(addr));
+                }
+            }
+            Ok(None)
+        }
+
         /// Sign a 32-byte digest using the KMS Sign API with ECDSA_SHA_256 algorithm.
         pub async fn sign_digest(&self, digest: &[u8]) -> Result<Vec<u8>> {
             if digest.len() != 32 {
                 return Err(anyhow!("KMS sign expects 32-byte digest"));
+            }
+            #[cfg(feature = "with-metrics")]
+            {
+                metrics::increment_counter!("kms.sign.attempts", 1);
             }
             let resp = self.client.sign()
                 .key_id(self.key_id.clone())
@@ -57,9 +79,17 @@ mod real {
                 .send()
                 .await?;
             if let Some(sig) = resp.signature() {
+                #[cfg(feature = "with-metrics")]
+                {
+                    metrics::increment_counter!("kms.sign.success", 1);
+                }
                 // AWS returns DER-encoded ASN.1 signature for ECDSA
                 Ok(sig.as_ref().to_vec())
             } else {
+                #[cfg(feature = "with-metrics")]
+                {
+                    metrics::increment_counter!("kms.sign.failure", 1);
+                }
                 Err(anyhow!("no signature returned from KMS"))
             }
         }
