@@ -44,12 +44,54 @@ mod real {
             }
         }
 
-        /// Attempt to extract an Ethereum address from the DER-encoded SubjectPublicKeyInfo returned
-        /// by `GetPublicKey`. This is a heuristic that looks for an uncompressed EC point (0x04 || X || Y)
-        /// inside the returned bytes and converts it to an address.
+        /// Parse the SubjectPublicKeyInfo using ASN.1 and ensure the key is EC/secp256k1.
+        /// Returns the Ethereum address extracted from the uncompressed public key.
         pub async fn get_address(&self) -> Result<Option<ethers_core::types::Address>> {
             let pk = self.get_public_key().await?;
-            // Search for a 65-byte uncompressed point starting with 0x04
+
+            // Parse SPKI with x509-parser to ensure we have id-ecPublicKey + secp256k1
+            #[cfg(feature = "aws-kms")]
+            {
+                use x509_parser::prelude::*;
+                // parse_public_key_info returns (rem, SubjectPublicKeyInfo)
+                match SubjectPublicKeyInfo::from_der(&pk) {
+                    Ok((_, spki)) => {
+                        // algorithm OID should be id-ecPublicKey (1.2.840.10045.2.1)
+                        let alg_oid = spki.algorithm.algorithm;
+                        let oid_str = alg_oid.to_id_string();
+                        if oid_str != "1.2.840.10045.2.1" {
+                            return Err(anyhow!("unsupported key algorithm OID: {}", oid_str));
+                        }
+                        // parameters must indicate the named curve OID; for secp256k1 it's 1.3.132.0.10
+                        if let Some(params) = spki.algorithm.parameters.as_ref() {
+                            if let Ok(oid) = params.as_oid() {
+                                let curve_oid = oid.to_id_string();
+                                if curve_oid != "1.3.132.0.10" {
+                                    return Err(anyhow!("unsupported EC curve OID: {} (requires secp256k1)", curve_oid));
+                                }
+                            } else {
+                                return Err(anyhow!("unsupported SPKI parameters for EC key"));
+                            }
+                        } else {
+                            return Err(anyhow!("missing SPKI parameters for EC key"));
+                        }
+
+                        // get the public key bitstring (should be uncompressed form 0x04||X||Y)
+                        let spk = spki.subject_public_key.data;
+                        if spk.len() != 65 || spk[0] != 0x04 {
+                            return Err(anyhow!("unexpected EC point format: expected uncompressed 65-byte point"));
+                        }
+                        let pub_bytes = &spk[1..65];
+                        let addr_bytes = ethers_core::utils::keccak256(pub_bytes);
+                        let addr = ethers_core::types::Address::from_slice(&addr_bytes[12..]);
+                        return Ok(Some(addr));
+                    }
+                    Err(e) => return Err(anyhow!("failed to parse SubjectPublicKeyInfo: {}", e)),
+                }
+            }
+
+            // Fallback unreachable unless compiled without aws-kms, but keep defensive behavior
+            // (previous heuristic remains as a fallback)
             for i in 0..(pk.len().saturating_sub(65)) {
                 if pk[i] == 0x04 {
                     let slice = &pk[i..i+65];
