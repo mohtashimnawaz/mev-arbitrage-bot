@@ -1,2 +1,30 @@
+# Build artifacts
 target/
 Cargo.lock
+
+# Local environment secrets
+.env
+.env.*
+*.secret
+secrets/
+keys/
+
+# Anvil / hardhat chain data
+anvil-chain-data/
+hardhat-chain-data/
+
+# Logs and runtime
+*.log
+logs/
+
+# Editor / OS files
+.vscode/
+.idea/
+.DS_Store
+
+# Docker
+docker-compose.override.yml
+
+# Misc
+node_modules/
+dist/
