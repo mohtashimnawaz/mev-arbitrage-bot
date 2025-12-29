@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use anyhow::Result;
+use async_trait::async_trait;
 
 /// Signing abstraction. In prod, implement HSM/KMS-backed signer.
 #[async_trait]
