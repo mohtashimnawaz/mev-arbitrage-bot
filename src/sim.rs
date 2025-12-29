@@ -118,7 +118,7 @@ mod tests {
 
         let provider = Provider::<Http>::try_from(std::env::var("ANVIL_RPC_URL").unwrap_or_else(|_| "http://127.0.0.1:8545".to_string())).unwrap();
         let wallet = ethers_signers::LocalWallet::from_str(&private).expect("wallet");
-        let addr = wallet.address();
+        let addr = <ethers_signers::LocalWallet as ethers_signers::Signer>::address(&wallet);
         let base_nonce = provider.get_transaction_count(addr, None).await.unwrap().as_u64();
 
         let chain_id = provider.get_chainid().await.unwrap().as_u64();
