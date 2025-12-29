@@ -37,10 +37,13 @@ base64 = "0.13"
 hex = "0.4"
 # Mock HTTP server for tests
 httpmock = { version = "0.6", optional = true }
+# Criterion for benchmarking (dev only)
+criterion = { version = "0.4", optional = true }
 # Testing & dev helpers (not patched into production code paths)
 
 [dev-dependencies]
 httpmock = "0.6"
+criterion = "0.4"
 
 [package.metadata]
 # Project metadata for maintainers
