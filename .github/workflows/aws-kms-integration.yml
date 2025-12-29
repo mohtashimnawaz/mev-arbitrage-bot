@@ -1,0 +1,58 @@
+name: AWS KMS Integration Tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  aws-kms-integration:
+    name: AWS KMS integration
+    runs-on: ubuntu-latest
+    env:
+      RUN_AWS_KMS_SIGN: ${{ secrets.RUN_AWS_KMS_SIGN }}
+      RUN_AWS_KMS_SIGN_BROADCAST: ${{ secrets.RUN_AWS_KMS_SIGN_BROADCAST }}
+      AWS_KMS_KEY_ID: ${{ secrets.AWS_KMS_KEY_ID }}
+      ANVIL_RPC_URL: ${{ secrets.ANVIL_RPC_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Install dependencies
+        run: cargo fetch --features aws-kms
+
+      - name: Run AWS KMS sign integration test (gated)
+        shell: bash
+        run: |
+          if [ "${RUN_AWS_KMS_SIGN}" != "1" ]; then
+            echo "Skipping AWS KMS sign test (RUN_AWS_KMS_SIGN!=1)"; exit 0
+          fi
+          if [ -z "${AWS_KMS_KEY_ID}" ]; then
+            echo "AWS_KMS_KEY_ID not set, skipping"; exit 0
+          fi
+          cargo test --features aws-kms --test aws_kms_integration -- --ignored
+
+      - name: Run AWS KMS sign+broadcast integration test (gated)
+        shell: bash
+        run: |
+          if [ "${RUN_AWS_KMS_SIGN_BROADCAST}" != "1" ]; then
+            echo "Skipping AWS KMS sign+broadcast test (RUN_AWS_KMS_SIGN_BROADCAST!=1)"; exit 0
+          fi
+          if [ -z "${AWS_KMS_KEY_ID}" ] || [ -z "${ANVIL_RPC_URL}" ]; then
+            echo "AWS_KMS_KEY_ID or ANVIL_RPC_URL not set, skipping"; exit 0
+          fi
+          cargo test --features aws-kms --test aws_kms_broadcast_integration -- --ignored
+
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aws-kms-logs
+          path: ./target/debug

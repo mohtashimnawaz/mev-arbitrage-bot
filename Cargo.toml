@@ -52,7 +52,7 @@ secp256k1 = { version = "0.26", features = ["recovery"] }
 
 [features]
 # Enable AWS KMS integration
-aws-kms = ["aws-config", "aws-sdk-kms", "x509-parser"]
+aws-kms = ["aws-config", "aws-sdk-kms", "x509-parser", "openssl"]
 # Enable YubiHSM integration
 # with-yubihsm = ["yubihsm"]
 # YubiHSM support is currently disabled in Cargo features; to enable, uncomment the dependency and feature once a compatible yubihsm crate version is available.
@@ -64,6 +64,8 @@ with-metrics = ["metrics", "metrics-exporter-prometheus"]
 [dev-dependencies]
 httpmock = "0.6"
 criterion = "0.4"
+# OpenSSL used only for tests to construct SPKI DER blobs
+openssl = "0.10"
 
 [package.metadata]
 # Project metadata for maintainers

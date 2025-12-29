@@ -1,0 +1,34 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "KMS & Autosubmitter dashboard (starter)",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "KMS Sign Attempts / Success / Failure",
+      "targets": [
+        { "expr": "sum(rate(kms_sign_attempts_total[5m]))" },
+        { "expr": "sum(rate(kms_sign_success_total[5m]))" },
+        { "expr": "sum(rate(kms_sign_failure_total[5m]))" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Autosubmitter Resubmissions / Inclusions",
+      "targets": [
+        { "expr": "sum(rate(autosubmit_resubmissions_total[5m]))" },
+        { "expr": "sum(rate(autosubmit_inclusions_total[5m]))" }
+      ]
+    },
+    {
+      "type": "graph",
+      "title": "KMS Sign Latency (95th percentile)",
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(kms_sign_duration_seconds_bucket[5m])) by (le))" }
+      ]
+    }
+  ],
+  "title": "MEV Bot: KMS & Autosubmit",
+  "version": 1
+}
