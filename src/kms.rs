@@ -24,11 +24,14 @@ impl KmsClient for MockKms {
         use ethers_signers::{LocalWallet, Signer};
         use std::str::FromStr;
         let wallet = LocalWallet::from_str(&self.secret)?;
-        // Sign the raw digest (H256)
-        let sig = wallet.sign_hash(ethers_core::types::H256::from_slice(digest))?;
+        // Sign the raw digest (H256). `sign_hash` returns a Signature, not a Result.
+        let sig = wallet.sign_hash(ethers_core::types::H256::from_slice(digest));
         Ok(sig.to_vec())
     }
 }
+
+pub mod aws;
+pub mod yubihsm;
 
 #[cfg(test)]
 mod tests {

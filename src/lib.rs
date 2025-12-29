@@ -5,6 +5,8 @@ pub mod scanner;
 pub mod signer;
 pub mod sim;
 pub mod tx;
+pub mod kms;
+pub mod autosubmit;
 
 use anyhow::Result;
 use tracing::{info, warn};
