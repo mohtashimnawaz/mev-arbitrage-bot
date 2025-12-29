@@ -3161,6 +3161,7 @@ dependencies = [
  "metrics 0.23.1",
  "metrics-exporter-prometheus",
  "once_cell",
+ "openssl",
  "rand",
  "reqwest",
  "secp256k1",

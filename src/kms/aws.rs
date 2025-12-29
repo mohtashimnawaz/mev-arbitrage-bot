@@ -20,7 +20,7 @@ mod real {
     use super::*;
     use aws_sdk_kms as kms;
     use aws_config;
-    use kms::model::SigningAlgorithmSpec;
+    use kms::types::{MessageType, SigningAlgorithmSpec};
 
     pub struct AwsKmsClient {
         key_id: String,
@@ -105,7 +105,7 @@ mod real {
             let resp = self.client.sign()
                 .key_id(self.key_id.clone())
                 .message(digest.into())
-                .message_type(kms::model::MessageType::Digest)
+                .message_type(MessageType::Digest)
                 .signing_algorithm(SigningAlgorithmSpec::EcdsaSha256)
                 .send()
                 .await?;
@@ -132,7 +132,12 @@ mod real {
             self.sign_digest(digest).await
         }
     }
+
 }
+
+// Re-export the real client when feature is enabled so tests can access helper APIs.
+#[cfg(feature = "aws-kms")]
+pub use self::real::AwsKmsClient;
 
 #[async_trait::async_trait]
 impl KmsClient for AwsKms {
