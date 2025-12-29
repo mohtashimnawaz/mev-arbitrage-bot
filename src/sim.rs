@@ -1,6 +1,6 @@
 use anyhow::{Result, Context};
 use ethers_providers::{Provider, Http, Middleware};
-use ethers_core::types::{Bytes, transaction::eip2718::TypedTransaction, U256, transaction::eip2718::TypedTransaction as TTx, TransactionReceipt};
+use ethers_core::types::{Address, Bytes, transaction::eip2718::TypedTransaction, U256, transaction::eip2718::TypedTransaction as TTx, TransactionReceipt};
 use crate::signer::Signer;
 use std::convert::TryInto;
 use std::time::Duration;
@@ -208,6 +208,26 @@ impl Simulator {
             }
         }
         Ok(best)
+    }
+
+    /// Autosubmit a chosen signed bundle: prefer relay submission; if no relay configured, send raw txs sequentially to provider.
+    pub async fn autosubmit_signed_bundle(&self, signed_blob: &[Vec<u8>], relay_client: &crate::executor::RelayClient) -> Result<serde_json::Value> {
+        // Try relay first
+        if let Ok(resp) = relay_client.submit_flashbots_bundle(signed_blob, None).await {
+            return Ok(serde_json::json!({"relay": resp}));
+        }
+
+        // Fallback: submit directly to provider sequentially
+        let provider = Provider::<Http>::try_from(self.rpc.as_str()).context("invalid rpc url for autosubmit")?;
+        let mut receipts = Vec::new();
+        for raw in signed_blob.iter() {
+            let pending = provider.send_raw_transaction(Bytes::from(raw.clone())).await.context("send_raw failed")?;
+            let receipt = tokio::time::timeout(Duration::from_secs(10), pending).await.context("timeout awaiting tx")??;
+            if let Some(r) = receipt {
+                receipts.push(serde_json::to_value(&r).unwrap_or_default());
+            }
+        }
+        Ok(serde_json::json!({"direct_receipts": receipts}))
     }
 
     pub async fn run_trade_simulation(&self, _tx_bytes: &[u8]) -> Result<bool> {
