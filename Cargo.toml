@@ -35,10 +35,25 @@ rand = "0.8"
 base64 = "0.13"
 # Hex encoding helper
 hex = "0.4"
-# Mock HTTP server for tests
-httpmock = { version = "0.6", optional = true }
-# Criterion for benchmarking (dev only)
-criterion = { version = "0.4", optional = true }
+
+# Optional AWS KMS integration
+aws-config = { version = "1.8", optional = true }
+aws-sdk-kms = { version = "1.8", optional = true }
+# Optional YubiHSM integration (feature-gated) — disabled by default due to platform compatibility issues
+# yubihsm = { version = "0.18.0", optional = true }
+# Simple metrics support
+metrics = { version = "0.23", optional = true }
+metrics-exporter-prometheus = { version = "0.9", optional = true }
+
+[features]
+# Enable AWS KMS integration
+aws-kms = ["aws-config", "aws-sdk-kms"]
+# Enable YubiHSM integration
+# with-yubihsm = ["yubihsm"]
+# YubiHSM support is currently disabled in Cargo features; to enable, uncomment the dependency and feature once a compatible yubihsm crate version is available.
+# Enable metrics collection
+with-metrics = ["metrics", "metrics-exporter-prometheus"]
+
 # Testing & dev helpers (not patched into production code paths)
 
 [dev-dependencies]
