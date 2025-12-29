@@ -1608,6 +1608,7 @@ dependencies = [
  "ethers-core",
  "ethers-providers",
  "ethers-signers",
+ "futures-util",
  "once_cell",
  "rand",
  "reqwest",

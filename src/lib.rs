@@ -11,7 +11,7 @@ use tracing::{info, warn};
 pub async fn run() -> Result<()> {
     let cfg = config::Config::default();
 
-    let md = data::MarketDataClient::new(cfg.ws_urls.clone()).await?;
+    let md = data::MarketDataClient::new(cfg.rpc_urls.clone(), cfg.ws_urls.clone()).await?;
     md.start().await?;
 
     // Spawn a background task that subscribes to market data and runs the scanner
